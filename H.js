@@ -4,23 +4,23 @@ var H = new function() {
 		_oPath 	= require('path');
 	
 	var _nInstanceCount 	= 0,
-		_oInstances			= {};
+		_oInstances			= {},
 		_oKinds				= {
-			'Object' : {
-				name 	  : 'Object',
-				id	 	  : 0,
+			'H.Object' : {
+				name 	  			: 'Object',
+				id	 	  			: 0,
+				
 				inherited : function() {
 					var oCaller = arguments.callee.caller;
 					this.kind[oCaller.methodName].apply(this, oCaller.arguments);
 				},
-				construct : function(oParams) { _construct('Object', oParams); },
+				
+				construct : function(oParams) { 
+					_construct('Object', oParams); 
+				}
 			}
 		};
-		
-	process.on('uncaughtException', function (oError) {
-	    H.error(oError.stack ? oError.stack : oError.message);
-	});
-		
+	
 	function _makeConstructor(sKind) {
 		return function(oParams) { return _construct(sKind, oParams); };
 	}
@@ -28,22 +28,19 @@ var H = new function() {
 	function _makeDestructor(oInst) {
 		return function() { return _destruct(oInst); };
 	}
-	/**********************************/
-	/**********************************/
-	/**********************************/
-	/**********************************/
-	/**********************************/
-	/**********************************/
+
 	function _require(sName, sPath) {
 		sPath = sPath || '';
 		var sPackage = '';
 		
 		if (sName.match(/\.js$/)) {
 			sName = sPath + sName;
+			console.log('Loading: ', sName);
 			eval(_oFs.readFileSync(sName, 'utf8'));
 		} else {
 			sPath = sPath + sName + '/';
 			sName = sPath + 'package';
+			console.log('Loading: ', sName);
 			var aPackage = _oFs.readFileSync(sName, 'utf8').split('\n');
 			for (var n in aPackage) {
 				var sFileName = aPackage[n].trim();
@@ -58,6 +55,26 @@ var H = new function() {
 		fMethod = fMethod || oInst[sName];
 		fMethod.contextId 	= oInst.id;
 		fMethod.methodName	= sName;
+	}
+	
+	function _createGetter(oInst, sProp) {
+		var fGetter = function() { return oInst._(sProp); }
+		_updateMethod('get ' + sProp, oInst, fGetter);
+		oInst.__defineGetter__(sProp, fGetter);
+	}
+	
+	function _createSetter(oInst, sProp) {
+		var fSetter = function(m) {
+			if (m == oInst._(sProp)) { return; }
+			H.Event.emit(H.Events.OBJECT_CHANGE, {
+				property: sProp,
+				oldValue: oInst._(sProp),
+				newValue: m
+			});
+			oInst._(sProp, m);
+		}
+		_updateMethod('set ' + sProp, oInst, fSetter);
+		oInst.__defineSetter__(sProp, fSetter);
 	}
 	
 	function _normalizeKindName(sName) {
@@ -76,7 +93,7 @@ var H = new function() {
 		if (aName.length > 1) {
 			for (var n=0; n<aName.length-1; n++) {
 				sName += '.' + aName[n];
-				if (typeof oNamespace[aName[n]] != 'undefined') {
+				if (H.isDefined(oNamespace[aName[n]])) {
 					oNamespace = oNamespace[aName[n]];
 				} else {
 					throw 'Kind ' + sName + ' is not defined';
@@ -88,16 +105,18 @@ var H = new function() {
 	}
 	
 	function _construct(sKindName, oParams) {
+		oParams = oParams || {};
 		var sProp,										// Property name
-			oKind = _oKinds[sKindName],				// Kind definition
+			oKind = _oKinds[sKindName],					// Kind definition
 			oInst = new function() {					// New instance
 				var _ = {};								// Private members repository
 				this._ = function(s, m) { 				// Setter/Getter for private members
-					if (typeof m == 'undefined') { return _[s]; }
+					if (!H.isDefined(m)) { return _[s]; }
 					_[s] = m;
 				}
 			};
-		
+			
+		H.mixin(oKind, oParams);
 		H.addProperty(oInst, 'id', _nInstanceCount, false);	// Setting id before anything else
 			
 		for (sProp in oKind) {
@@ -135,27 +154,42 @@ var H = new function() {
 			}
 		}
 		
-		_oInstances[oInst.id] = oInst;
-		_nInstanceCount ++;
-		
-		if (typeof oInst['onConstruct'] == 'function') {
+		if (H.isFunction(oInst['onConstruct'])) {
 			oInst.onConstruct();
 			delete oInst.construct;
 		}
 		
 		oInst.destruct = _makeDestructor(oInst);
 		
+		_oInstances[oInst.id] = oInst;
+		_nInstanceCount ++;
+		
+		H.Event.emit(H.Events.OBJECT_CONSTRUCT, {
+			instance: oInst
+		});
+		
 		return oInst;
 	}
 	
 	function _destruct(oInst) {
-		if (typeof oInst['onDestruct'] == 'function') {
+		if (H.isFunction(oInst['onDestruct'])) {
 			oInst.onDestruct();
 		}
+		H.Event.emit(H.Events.OBJECT_DESTRUCT, {
+			instance: oInst
+		});
 		delete oInst;
 	}
 	
 	/************************* PUBLIC *************************/
+	
+	this.initialize = function() {
+		H.Event.initialize();
+		
+		// process.on('uncaughtException', function (oError) {
+		//     H.error(oError.stack ? oError.stack : (oError.message ? oError.message : oError));
+		// });
+	}
 	
 	this.error	= function(s) { console.log('Error', s); process.exit(1); }
 	this.warn	= function(s) {	console.log('Warning: ', s); }
@@ -166,26 +200,10 @@ var H = new function() {
 	}
 	
 	this.addProperty = function(oInst, sProp, mValue, bWritable) {
-		var fGetter,
-			fSetter;
-			
-		fGetter = function() { return oInst._(sProp); }
-		_updateMethod('get ' + sProp, oInst, fGetter);
-		
-		oInst.__defineGetter__(sProp, fGetter);
-		
-		if (bWritable) {
-			fSetter = function(m) { 
-				H.Event.send(H.Events.CHANGE, {
-					oldValue	: oInst._(sProp),
-					newValue	: m
-				});
-				oInst._(sProp, m); 
-			}
-			_updateMethod('set ' + sProp, oInst, fSetter);
-			oInst.__defineSetter__(sProp, fSetter);
+		_createGetter(oInst, sProp);
+		if (bWritable) { 
+			_createSetter(oInst, sProp); 
 		}
-		
 		oInst._(sProp, mValue); 
 	}
 	
@@ -194,21 +212,23 @@ var H = new function() {
 	}
 	
 	this.kind = function(oKind) {
-		if (typeof oKind.name == 'undefined') 			{ throw 'Kind name is not defined'; }
-		if (typeof oKind.kind == 'undefined') 			{ oKind.kind = 'Object'; }
-		if (typeof oKind.kind == 'object')				{ oKind.kind = oKind.kind.name; }
-		if (typeof _oKinds[oKind.kind] == 'undefined') 	{ throw 'Kind "' + oKind.kind + '" is not defined'; }
+		if (!H.isDefined(oKind.name)) 	{ throw 'Kind name is not defined'; }
+		if (!H.isDefined(oKind.kind)) 	{ oKind.kind = 'Object'; }
+		if (H.isObject(oKind.kind))		{ oKind.kind = oKind.kind.name; }
+		
+		oKind.kind = _normalizeKindName(oKind.kind)
+		
+		if (!H.isDefined(_oKinds[oKind.kind])) 	{ throw 'Kind "' + oKind.kind + '" is not defined'; }
 	
-		oKind.name = _normalizeKindName(oKind.name);
+		oKind.name 		= _normalizeKindName(oKind.name);
 		oKind.__proto__ = _oKinds[oKind.kind];
 		oKind.construct = _makeConstructor(oKind.name);
+		
 		_saveKind(oKind);
 	}
 	
 	this.require = function() {
-		var n = 0;
-		
-		for (;n<arguments.length; n++) {
+		for (var n=0; n<arguments.length; n++) {
 			_require(arguments[n]);
 		}
 	}
@@ -216,16 +236,38 @@ var H = new function() {
 	this.getInstance = function(nId) {
 		return _oInstances[nId];
 	}
+	
+	this.toString = function() {
+		return 'Hydrogen';
+	}
+}
+
+H.isDefined 	= function(m) {	return typeof m != 'undefined'; }
+H.isFunction 	= function(m) {	return typeof m == 'function'; 	}
+H.isObject 		= function(m) {	return typeof m == 'object'; 	}
+H.isString 		= function(m) {	return typeof m == 'string'; 	}
+
+H.mixin	= function(o1, o2) {
+	var s;
+	for (s in o2) {
+		o1[s] = o2[s];
+	}
+}
+
+H.clone = function(o) {
+	var o1 = {};
+	this.mixin(o1, o);
+	return o1;
 }
 
 H.require(
-	'H/H.Utils.js',
 	'H/H.Event.js'
 );
 
-
 H.Events = {
-	CHANGE: 'CHANGE'
+	OBJECT_CONSTRUCT	: 'OBJECT_CONSTRUCT',
+	OBJECT_DESTRUCT		: 'OBJECT_DESTRUCT',
+	OBJECT_CHANGE		: 'OBJECT_CHANGE'
 }
-
+H.initialize();
 module.exports = H;
