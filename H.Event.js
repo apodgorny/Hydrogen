@@ -26,4 +26,19 @@ H.Event = {
 		
 		H.Event.emitter.emit(sEvent, oData);
 	}
-}
+};
+
+H.on = H.Event.on;
+H.emit = H.Event.emit;
+
+H.bind = function(o1, sProp1) {
+	return {
+		to: function(o2, sProp2) {
+			H.Event.on(H.Events.CHANGE, function(oData) {
+				if (oData.sender === o2 && oData.property == sProp2) {
+					o1[sProp1] = oData.newValue;
+				}
+			})
+		}
+	}
+};

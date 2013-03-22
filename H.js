@@ -6,19 +6,6 @@ var H = new function() {
 	var _nInstanceCount 	= 0,
 		_oInstances			= {},
 		_oKinds				= {
-			'H.Object' : {
-				name 	  			: 'Object',
-				id	 	  			: 0,
-				
-				inherited : function() {
-					var oCaller = arguments.callee.caller;
-					this.kind[oCaller.methodName].apply(this, oCaller.arguments);
-				},
-				
-				construct : function(oParams) { 
-					_construct('Object', oParams); 
-				}
-			}
 		};
 	
 	function _makeConstructor(sKind) {
@@ -35,12 +22,12 @@ var H = new function() {
 		
 		if (sName.match(/\.js$/)) {
 			sName = sPath + sName;
-			console.log('Loading: ', sName);
+			// console.log('Loading: ', sName);
 			eval(_oFs.readFileSync(sName, 'utf8'));
 		} else {
 			sPath = sPath + sName + '/';
 			sName = sPath + 'package';
-			console.log('Loading: ', sName);
+			// console.log('Loading: ', sName);
 			var aPackage = _oFs.readFileSync(sName, 'utf8').split('\n');
 			for (var n in aPackage) {
 				var sFileName = aPackage[n].trim();
@@ -66,7 +53,7 @@ var H = new function() {
 	function _createSetter(oInst, sProp) {
 		var fSetter = function(m) {
 			if (m == oInst._(sProp)) { return; }
-			H.Event.emit(H.Events.OBJECT_CHANGE, {
+			H.Event.emit(H.Events.CHANGE, {
 				property: sProp,
 				oldValue: oInst._(sProp),
 				newValue: m
@@ -164,7 +151,7 @@ var H = new function() {
 		_oInstances[oInst.id] = oInst;
 		_nInstanceCount ++;
 		
-		H.Event.emit(H.Events.OBJECT_CONSTRUCT, {
+		H.Event.emit(H.Events.CONSTRUCT, {
 			instance: oInst
 		});
 		
@@ -175,7 +162,7 @@ var H = new function() {
 		if (H.isFunction(oInst['onDestruct'])) {
 			oInst.onDestruct();
 		}
-		H.Event.emit(H.Events.OBJECT_DESTRUCT, {
+		H.Event.emit(H.Events.DESTRUCT, {
 			instance: oInst
 		});
 		delete oInst;
@@ -185,6 +172,15 @@ var H = new function() {
 	
 	this.initialize = function() {
 		H.Event.initialize();
+		
+		_saveKind({
+			name : 'H.Object',
+			inherited : function() {
+				var oCaller = arguments.callee.caller;
+				this.kind[oCaller.methodName].apply(this, oCaller.arguments);
+			},
+			construct : _makeConstructor('H.Object')
+		})
 		
 		// process.on('uncaughtException', function (oError) {
 		//     H.error(oError.stack ? oError.stack : (oError.message ? oError.message : oError));
@@ -265,9 +261,9 @@ H.require(
 );
 
 H.Events = {
-	OBJECT_CONSTRUCT	: 'OBJECT_CONSTRUCT',
-	OBJECT_DESTRUCT		: 'OBJECT_DESTRUCT',
-	OBJECT_CHANGE		: 'OBJECT_CHANGE'
+	CONSTRUCT	: 'CONSTRUCT',
+	DESTRUCT		: 'DESTRUCT',
+	CHANGE		: 'CHANGE'
 }
 H.initialize();
 module.exports = H;
