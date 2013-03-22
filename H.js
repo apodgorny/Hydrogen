@@ -1,7 +1,9 @@
 var H = new function() {
 	
+	var _oFs 	= require('fs'),
+		_oPath 	= require('path');
+	
 	var _nInstanceCount 	= 0,
-		_sLastPackagePath 	= '';	// Holds package path when requiring package files
 		_oInstances			= {};
 		_oKinds				= {
 			'Object' : {
@@ -15,6 +17,10 @@ var H = new function() {
 			}
 		};
 		
+	process.on('uncaughtException', function (oError) {
+	    H.error(oError.stack ? oError.stack : oError.message);
+	});
+		
 	function _makeConstructor(sKind) {
 		return function(oParams) { return _construct(sKind, oParams); };
 	}
@@ -22,20 +28,30 @@ var H = new function() {
 	function _makeDestructor(oInst) {
 		return function() { return _destruct(oInst); };
 	}
-	
-	function _require(sName) {
-		if (sName.match(/\.js$/)) {
-			sName = _sLastPackagePath
-			 	? _sLastPackagePath + '/' + sName
-				: 'H/' + sName;						// FIXME
-		} else {
-			_sLastPackagePath = sName;
-			sName = sName + '/package.js';
-		}
+	/**********************************/
+	/**********************************/
+	/**********************************/
+	/**********************************/
+	/**********************************/
+	/**********************************/
+	function _require(sName, sPath) {
+		sPath = sPath || '';
+		var sPackage = '';
 		
-		// Read and eval library
-		var sCode = H.FS.readFileSync(sName, 'utf8');
-		eval(sCode);
+		if (sName.match(/\.js$/)) {
+			sName = sPath + sName;
+			eval(_oFs.readFileSync(sName, 'utf8'));
+		} else {
+			sPath = sPath + sName + '/';
+			sName = sPath + 'package';
+			var aPackage = _oFs.readFileSync(sName, 'utf8').split('\n');
+			for (var n in aPackage) {
+				var sFileName = aPackage[n].trim();
+				if (sFileName.length > 0) {
+					_require(sFileName, sPath);
+				}
+			}
+		}
 	}
 	
 	function _updateMethod(sName, oInst, fMethod) {
@@ -63,7 +79,7 @@ var H = new function() {
 				if (typeof oNamespace[aName[n]] != 'undefined') {
 					oNamespace = oNamespace[aName[n]];
 				} else {
-					H.error('Kind ' + sName + ' is not defined');
+					throw 'Kind ' + sName + ' is not defined';
 				}
 			}
 		}
@@ -141,8 +157,6 @@ var H = new function() {
 	
 	/************************* PUBLIC *************************/
 	
-	this.FS	= require('fs');
-
 	this.error	= function(s) { console.log('Error', s); process.exit(1); }
 	this.warn	= function(s) {	console.log('Warning: ', s); }
 	
@@ -180,10 +194,10 @@ var H = new function() {
 	}
 	
 	this.kind = function(oKind) {
-		if (typeof oKind.name == 'undefined') 			{ H.error('Kind name is not defined'); }
+		if (typeof oKind.name == 'undefined') 			{ throw 'Kind name is not defined'; }
 		if (typeof oKind.kind == 'undefined') 			{ oKind.kind = 'Object'; }
 		if (typeof oKind.kind == 'object')				{ oKind.kind = oKind.kind.name; }
-		if (typeof _oKinds[oKind.kind] == 'undefined') 	{ H.error('Kind "' + oKind.kind + '" is not defined'); }
+		if (typeof _oKinds[oKind.kind] == 'undefined') 	{ throw 'Kind "' + oKind.kind + '" is not defined'; }
 	
 		oKind.name = _normalizeKindName(oKind.name);
 		oKind.__proto__ = _oKinds[oKind.kind];
@@ -193,6 +207,7 @@ var H = new function() {
 	
 	this.require = function() {
 		var n = 0;
+		
 		for (;n<arguments.length; n++) {
 			_require(arguments[n]);
 		}
@@ -204,8 +219,8 @@ var H = new function() {
 }
 
 H.require(
-	'H.Utils.js',
-	'H.Event.js'
+	'H/H.Utils.js',
+	'H/H.Event.js'
 );
 
 
