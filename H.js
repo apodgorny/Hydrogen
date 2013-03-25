@@ -5,8 +5,7 @@ var H = new function() {
 	
 	var _nInstanceCount 	= 0,
 		_oInstances			= {},
-		_oKinds				= {
-		};
+		_oKinds				= {};
 	
 	function _makeConstructor(sKind) {
 		return function(oParams) { return _construct(sKind, oParams); };
@@ -53,11 +52,19 @@ var H = new function() {
 	function _createSetter(oInst, sProp) {
 		var fSetter = function(m) {
 			if (m == oInst._(sProp)) { return; }
-			H.Event.emit(H.Events.CHANGE, {
+			
+			var oEvent = {
 				property: sProp,
 				oldValue: oInst._(sProp),
 				newValue: m
-			});
+			};
+			
+			H.Event.emit(H.Events.CHANGE, oEvent);
+			
+			if (H.isFunction(oInst['onChange'])) {
+				oInst.onChange(oInst, oEvent);
+			}
+			
 			oInst._(sProp, m);
 		}
 		_updateMethod('set ' + sProp, oInst, fSetter);
@@ -142,7 +149,7 @@ var H = new function() {
 		}
 		
 		if (H.isFunction(oInst['onConstruct'])) {
-			oInst.onConstruct();
+			oInst.onConstruct(oInst, {});
 			delete oInst.construct;
 		}
 		
@@ -160,7 +167,7 @@ var H = new function() {
 	
 	function _destruct(oInst) {
 		if (H.isFunction(oInst['onDestruct'])) {
-			oInst.onDestruct();
+			oInst.onDestruct(oInst, {});
 		}
 		H.Event.emit(H.Events.DESTRUCT, {
 			instance: oInst
@@ -182,9 +189,9 @@ var H = new function() {
 			construct : _makeConstructor('H.Object')
 		})
 		
-		// process.on('uncaughtException', function (oError) {
-		//     H.error(oError.stack ? oError.stack : (oError.message ? oError.message : oError));
-		// });
+		process.on('uncaughtException', function (oError) {
+		    H.error(oError.stack ? oError.stack : (oError.message ? oError.message : oError));
+		});
 	}
 	
 	this.error	= function(s) { console.log('Error', s); process.exit(1); }
