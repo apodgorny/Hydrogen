@@ -1,0 +1,3 @@
+#!/bin/bash
+
+node /Users/lexpodgorny/Sites/pipes/H/H.Command.js $1 $2 $3

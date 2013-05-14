@@ -1,5 +1,3 @@
 Hydrogen
 ========
 
-Requires modules:
-* request
